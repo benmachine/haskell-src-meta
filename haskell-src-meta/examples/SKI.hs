@@ -1,17 +1,42 @@
-{-# LANGUAGE DeriveDataTypeable, PatternGuards, TemplateHaskell #-}
+-- TODO: knock out these warnings
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -fno-warn-unused-matches #-}
+{-# OPTIONS_GHC -fno-warn-type-defaults #-}
+{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
-module Language.Haskell.Meta.QQ.SKI (SKI(..),ski) where
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE PatternGuards      #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
-import Language.Haskell.Meta (parseExp, parsePat)
-import Language.Haskell.TH.Lib
-import Language.Haskell.TH.Ppr
-import Language.Haskell.TH.Quote
-import Language.Haskell.TH.Syntax
-import Language.Haskell.Meta.Utils (cleanNames, ppDoc, unQ)
-import Text.ParserCombinators.ReadP
-import Data.Typeable(Typeable)
-import Data.Generics(Data)
-import Text.PrettyPrint(render)
+module SKI
+  ( SKI(..)
+  , ski
+  , parse
+  , bracksP
+  , obrackP
+  , cbrackP
+  ) where
+
+import qualified Control.Monad.Fail           as Fail
+import           Data.Generics                (Data)
+import           Data.Typeable                (Typeable)
+import           Language.Haskell.Meta        (parseExp, parsePat)
+import           Language.Haskell.Meta.Utils  (cleanNames, ppDoc, unsafeRunQ)
+import           Language.Haskell.TH.Lib      hiding (parensP)
+import           Language.Haskell.TH.Ppr
+import           Language.Haskell.TH.Quote
+import           Language.Haskell.TH.Syntax
+import           Text.ParserCombinators.ReadP
+import           Text.PrettyPrint             (render)
+
+-- TODO: narrow type & move to shared module
+quoteTypeNotImplemented :: Fail.MonadFail m => String -> m a
+quoteTypeNotImplemented = fail . ("type quoter not implemented: " ++)
+
+-- TODO: narrow type & move to shared module
+quoteDecNotImplemented :: Fail.MonadFail m => String -> m a
+quoteDecNotImplemented = fail . ("dec quoter not implemented: " ++ )
+
 
 data SKI = S | K | I | E Exp | SKI :$ SKI
   deriving (Eq,Data,Typeable)
@@ -26,29 +51,32 @@ eval :: SKI -> SKI
 eval (I :$ x)               = eval x
 eval ((K :$ x) :$ y)        = eval x
 eval (((S :$ x) :$ y :$ z)) = eval (eval (x :$ z) :$ eval (y :$ z))
-eval (E e :$ E e')          = E (unQ[|$(return e) $(return e')|])
+eval (E e :$ E e')          = E (unsafeRunQ[|$(return e) $(return e')|])
 eval (x :$ y)               = eval0 ((eval x) :$ (eval y))
 eval  x                     = x
 eval0 (I :$ x)               = eval x
 eval0 ((K :$ x) :$ y)        = eval x
 eval0 (((S :$ x) :$ y :$ z)) = eval (eval (x :$ z) :$ eval (y :$ z))
-eval0 (E e :$ E e')          = E (unQ[|$(return e) $(return e')|])
+eval0 (E e :$ E e')          = E (unsafeRunQ[|$(return e) $(return e')|])
 eval0  x                     = x
 
 ski :: QuasiQuoter
 ski = QuasiQuoter
-        {quoteExp = skiExpQ
-        ,quotePat = skiPatQ}
+  { quoteExp = skiExpQ
+  , quotePat = skiPatQ
+  , quoteType = quoteTypeNotImplemented
+  , quoteDec = quoteDecNotImplemented
+  }
 
 instance Lift SKI where
   lift = liftSKI
 
 liftSKI (E e) = return e
 liftSKI a     = go a
-  where go S = [|S|]
-        go K = [|K|]
-        go I = [|I|]
-        go (E e) = [|E e|]
+  where go S      = [|S|]
+        go K      = [|K|]
+        go I      = [|I|]
+        go (E e)  = [|E e|]
         go (x:$y) = [|$(go x) :$ $(go y)|]
 
 instance Show SKI where
@@ -64,7 +92,7 @@ instance Show SKI where
 
 skiExpQ :: String -> ExpQ
 skiExpQ s = case run s of
-              [] -> fail "ski: parse error"
+              []  -> fail "ski: parse error"
               e:_ -> lift (cleanNames e)
 
 skiPatQ :: String -> PatQ
@@ -74,7 +102,7 @@ skiPatQ s = do
             . pprint
               . cleanNames) e
   case p of
-    Left e -> fail e
+    Left e  -> fail e
     Right p -> return p
 
 -- ghci> parse "S(SS)IK(SK)"
@@ -150,6 +178,3 @@ q x = x $ (c $ k) $ k $ k $ s
        c = s $ (b $ b $ s) $ k $ k
        b = s $ (k $ s) $ k
 -}
-
-
-

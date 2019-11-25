@@ -1,16 +1,41 @@
-{-# LANGUAGE DeriveDataTypeable, PatternGuards, TemplateHaskell #-}
+-- TODO: knock out these warnings
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -fno-warn-unused-matches #-}
 
-module Language.Haskell.Meta.QQ.HsHere (here) where
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE PatternGuards      #-}
+{-# LANGUAGE TemplateHaskell    #-}
 
-import Language.Haskell.Meta (parseExp, parsePat)
-import Language.Haskell.TH.Lib
-import Language.Haskell.TH.Ppr
-import Language.Haskell.TH.Quote
-import Language.Haskell.TH.Syntax
-import Language.Haskell.Meta.Utils (cleanNames)
-import Text.ParserCombinators.ReadP
-import Data.Typeable(Typeable)
-import Data.Generics(Data)
+module HsHere
+  ( here
+  , lexemeP
+  , nestedP
+  , parensP
+  , bracksP
+  , oparenP
+  , obrackP
+  , cbrackP
+  ) where
+
+import qualified Control.Monad.Fail           as Fail
+import           Data.Generics                (Data)
+import           Data.Typeable                (Typeable)
+import           Language.Haskell.Meta        (parseExp, parsePat)
+import           Language.Haskell.Meta.Utils  (cleanNames)
+import           Language.Haskell.TH.Lib      hiding (parensP)
+import           Language.Haskell.TH.Ppr
+import           Language.Haskell.TH.Quote
+import           Language.Haskell.TH.Syntax
+import           Text.ParserCombinators.ReadP
+
+-- TODO: narrow type & move to shared module
+quoteTypeNotImplemented :: Fail.MonadFail m => String -> m a
+quoteTypeNotImplemented = fail . ("type quoter not implemented: " ++)
+
+-- TODO: narrow type & move to shared module
+quoteDecNotImplemented :: Fail.MonadFail m => String -> m a
+quoteDecNotImplemented = fail . ("dec quoter not implemented: " ++ )
+
 
 data Here
   = CodeH Exp
@@ -20,7 +45,7 @@ data Here
 
 -- | Example:
 --
--- > a x = [$here| random "text" $(x + 1)
+-- > a x = [here| random "text" $(x + 1)
 -- >  something else|]
 --
 -- Is like:
@@ -28,7 +53,9 @@ data Here
 -- > a x = " random \"text\" "++ show (x + 1) ++"\n  something else"
 here :: QuasiQuoter
 here = QuasiQuoter
-        {quoteExp = hereExpQ
+        {quoteType = quoteTypeNotImplemented
+        ,quoteDec = quoteDecNotImplemented
+        ,quoteExp = hereExpQ
         ,quotePat = herePatQ}
 
 instance Lift Here
@@ -42,7 +69,7 @@ liftHere (ManyH hs) = [|concat $(listE (fmap liftHere hs))|]
 
 hereExpQ :: String -> ExpQ
 hereExpQ s = case run s of
-              [] -> fail "here: parse error"
+              []  -> fail "here: parse error"
               e:_ -> lift (cleanNames e)
 
 herePatQ :: String -> PatQ
@@ -52,7 +79,7 @@ herePatQ s = do
             . pprint
               . cleanNames) e
   case p of
-    Left e -> fail e
+    Left e  -> fail e
     Right p -> return p
 
 run :: String -> [Here]
@@ -81,7 +108,8 @@ oneP s
   | c:s <- s        = do skip 1
                          (TextH . (c:))
                           `fmap` munch (not.(`elem`"\\$"))
-  where go _ acc  []         = return (TextH (reverse acc))
+  where go :: Int -> String -> String -> ReadP Here
+        go _ acc  []         = return (TextH (reverse acc))
         go 1 []  (')':_) = skip 1 >> return (TextH "$()")
         go 1 acc (')':_) = do skip (1 + length acc)
                               let s = reverse acc
@@ -105,10 +133,11 @@ lexemeP :: ReadP a -> ReadP a
 lexemeP p = p >>= \x -> skipSpaces >> return x
 nestedP :: (ReadP a -> ReadP a) -> (ReadP a -> ReadP a)
 nestedP nest p = p <++ nest (skipSpaces >> nestedP nest p)
+parensP, bracksP :: ReadP a -> ReadP a
 parensP  = between oparenP cparenP
 bracksP  = between oparenP cparenP
+oparenP, cparenP, obrackP, cbrackP :: ReadP Char
 oparenP  = char '('
 cparenP  = char ')'
 obrackP  = char '['
 cbrackP  = char ']'
-

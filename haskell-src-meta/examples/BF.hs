@@ -1,24 +1,46 @@
-{-# LANGUAGE BangPatterns, TemplateHaskell #-}
+-- TODO: knock out these warnings
+{-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -fno-warn-unused-matches #-}
+{-# LANGUAGE BangPatterns    #-}
+{-# LANGUAGE TemplateHaskell #-}
 
-module Language.Haskell.Meta.QQ.BF (
-   bf,bf2,bfHelloWorld
+module BF (
+   bf,bf2,bfHelloWorld,eval_,parse, exec, test0
 ) where
 
-import Language.Haskell.Meta (parsePat)
+import Language.Haskell.Meta      (parsePat)
 import Language.Haskell.TH.Lib
 import Language.Haskell.TH.Quote
 import Language.Haskell.TH.Syntax
 
-import Data.Char
-import Data.IntMap(IntMap)
-import qualified Data.IntMap as IM
+import qualified Control.Monad.Fail as Fail
+import           Data.Char
+import           Data.IntMap        (IntMap)
+import qualified Data.IntMap        as IM
 
+-- TODO: narrow type & move to shared module
+quoteTypeNotImplemented :: Fail.MonadFail m => String -> m a
+quoteTypeNotImplemented = fail . ("type quoter not implemented: " ++)
+
+-- TODO: narrow type & move to shared module
+quoteDecNotImplemented :: Fail.MonadFail m => String -> m a
+quoteDecNotImplemented = fail . ("dec quoter not implemented: " ++ )
 
 bf :: QuasiQuoter
-bf = QuasiQuoter { quoteExp = bfExpQ, quotePat = bfPatQ }
+bf = QuasiQuoter
+  { quoteExp = bfExpQ
+  , quotePat = bfPatQ
+  , quoteType = quoteTypeNotImplemented
+  , quoteDec = quoteDecNotImplemented
+  }
 
 bf2 :: QuasiQuoter
-bf2 = QuasiQuoter { quoteExp = bf2ExpQ, quotePat = bfPatQ }
+bf2 = QuasiQuoter
+  { quoteExp = bf2ExpQ
+  , quotePat = bfPatQ
+  , quoteType = quoteTypeNotImplemented
+  , quoteDec = quoteDecNotImplemented
+  }
 
 bf2ExpQ :: String -> ExpQ
 bf2ExpQ s = [|eval (parse s)|]
@@ -32,16 +54,16 @@ bfPatQ s = do
             . show
               . parse) s
   case p of
-    Left e -> fail e
+    Left e  -> fail e
     Right p -> return p
 
 instance Lift Bf where
-  lift Inp = [|Inp|]
-  lift Out = [|Out|]
-  lift Inc = [|Inc|]
-  lift Dec = [|Dec|]
-  lift MovL = [|MovL|]
-  lift MovR = [|MovR|]
+  lift Inp        = [|Inp|]
+  lift Out        = [|Out|]
+  lift Inc        = [|Inc|]
+  lift Dec        = [|Dec|]
+  lift MovL       = [|MovL|]
+  lift MovR       = [|MovR|]
   lift (While xs) = [|While $(lift xs)|]
 
 type Ptr = Int
@@ -133,7 +155,7 @@ parse s = go 0 [] s (\_ xs _ -> xs)
         go !n acc (c  :cs) k = go n acc cs k
 
 
-
+test0 :: IO [Bf]
 test0 = do
   a <- readFile "prime.bf"
   return (parse a)
@@ -174,9 +196,3 @@ parse s = let p n s = case go n [] s of
         go !n acc (c  :cs) = (n+1, [Error ("go error: char "++show n
                                     ++" illegal character: "++show c)], [])
 -}
-
-
-
-
-
-
